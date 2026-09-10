@@ -52,6 +52,7 @@ use agent_harness::outbound::daytona::{
 use agent_harness::outbound::egress::EgressProvisioner;
 use agent_harness::outbound::forward::RedisCommandForwarder;
 use agent_harness::outbound::local::{LocalContainerManager, LocalSettings};
+use agent_harness::outbound::prompt_mentions::LexicalPromptMentions;
 use agent_harness::outbound::routing::RoutedContainerManager;
 use agent_harness::outbound::runtime_registry::{HarnessKeyedConnections, RuntimeRegistry};
 use agent_inmem::domain::engine::TurnEngine;
@@ -515,6 +516,12 @@ async fn run() -> anyhow::Result<()> {
         LexicalServiceUrl::new()?.to_string(),
     );
     let announcer = ChannelAnnouncer::new(Arc::clone(&channel_service), lexical.clone());
+    let prompt_mentions = LexicalPromptMentions::new(
+        lexical.clone(),
+        Arc::new(entity_access::outbound::PgAccessRepository::new(
+            pool.clone(),
+        )),
+    );
     let prompt_composer = LexicalAgentPromptComposer::new(lexical);
     let prompt_context =
         ChannelPromptContextAdapter::new(channel_service, Arc::clone(&entity_access));
@@ -562,6 +569,7 @@ async fn run() -> anyhow::Result<()> {
         defaults,
         Arc::clone(&lifecycle_publisher),
         pending_commands,
+        prompt_mentions,
     ));
     // Close the loop: turn ends observed by the session actors drain the
     // harness's prompt queue.
