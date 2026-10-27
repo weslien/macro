@@ -3,6 +3,10 @@ import { NoiseBackground } from '@app/features/setup/flow/shared';
 import { useOnboardingV4Flag } from '@app/features/setup/flow/useOnboardingV4Flag';
 import { useAnalytics } from '@app/lib/analytics/analytics-context';
 import { GOOGLE_GMAIL_IDP } from '@core/auth/email';
+import {
+  consumeGatewayHandoffFragment,
+  storeGatewayHandoffCookies,
+} from '@core/auth/gatewayHandoff';
 import { LoadingBlock } from '@core/component/LoadingBlock';
 import { toast } from '@core/component/Toast/Toast';
 import { useEmailLinks } from '@core/email-link';
@@ -21,7 +25,7 @@ import {
   invalidateAllAfterLogin,
   useUserInfoQuery,
 } from '@queries/auth/user-info';
-import { authServiceClient } from '@service-auth/client';
+import { authServiceClient, applyGatewayHandoffTokens } from '@service-auth/client';
 import {
   action,
   useAction,
@@ -540,6 +544,38 @@ export function Login(props: { signupMode?: boolean }) {
   });
 
   const { initEmailLink } = useEmailLinks();
+
+  createEffect(() => {
+    // Self-hosted deployments: an auth gateway that owns SSO can mint Macro
+    // session tokens for an already-logged-in user and hand them over via a
+    // URL fragment redirect (see @core/auth/gatewayHandoff). The fragment is
+    // consumed exactly once here — no server round-trip, no Referer leak —
+    // and the resulting session state matches the session-code path above.
+    const handoff = consumeGatewayHandoffFragment();
+    if (!handoff) return;
+
+    storeGatewayHandoffCookies(handoff);
+    applyGatewayHandoffTokens(handoff.accessToken, handoff.refreshToken);
+    void (async () => {
+      try {
+        // Reset token state only after the session cookies have actually
+        // changed — same ordering caveat as the session-code effect above.
+        unsetTokenPromise();
+        await invalidateAllAfterLogin();
+        await initEmailLink().match(
+          () => {},
+          (err) => {
+            if (err.tag !== 'AlreadyInitialized') {
+              console.error('Failed to init email link on login', err);
+            }
+          }
+        );
+      } catch (error) {
+        console.error('Failed to complete gateway handoff', error);
+        toast.failure('Sign-in failed. Please try again.');
+      }
+    })();
+  });
 
   const onComplete = async () => {
     unsetTokenPromise();

@@ -365,10 +365,10 @@ async fn run() -> anyhow::Result<()> {
     .context("unable to create opensearch client")?;
 
     if let Err(e) = opensearch_client.health().await {
-        tracing::error!(error=?e, "error connecting to opensearch");
-        return Err(e);
+        tracing::warn!(error=?e, "opensearch unavailable — document search will be disabled");
+    } else {
+        tracing::trace!("initialized opensearch client");
     }
-    tracing::trace!("initialized opensearch client");
 
     let frecency_storage = FrecencyPgStorage::new(db.clone());
     let frecency_service = FrecencyQueryServiceImpl::new(frecency_storage.clone());

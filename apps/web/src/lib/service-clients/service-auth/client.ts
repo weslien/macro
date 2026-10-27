@@ -100,6 +100,21 @@ const [accessTokenData, setAccessTokenData] = makePersisted(
   }
 );
 
+/**
+ * Applies tokens handed over by an external auth gateway (self-hosted
+ * deployments where the platform gateway mints Macro session JWTs for an
+ * already-logged-in user) — the same state sessionLogin persists, without a
+ * round-trip to the authentication service. Callers are responsible for also
+ * writing the session cookies (see @core/auth/gatewayHandoff).
+ */
+export function applyGatewayHandoffTokens(accessToken: string, refreshToken: string) {
+  setAccessTokenData({
+    accessToken,
+    refreshToken,
+    expiresAt: getExpiresAt(accessToken),
+  });
+}
+
 export function getExpiresAt(token: string) {
   try {
     const payload: unknown = JSON.parse(atob(token.split('.')[1]));
